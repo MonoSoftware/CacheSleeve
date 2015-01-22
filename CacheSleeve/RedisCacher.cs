@@ -5,17 +5,24 @@ using System.Linq;
 using System.Threading.Tasks;
 using CacheSleeve.Models;
 using Newtonsoft.Json;
+using StackExchange.Redis;
 
 namespace CacheSleeve
 {
     public class RedisCacher : ICacher, IAsyncCacher
     {
         private readonly CacheManager _cacheSleeve;
+        private readonly JsonSerializerSettings _jsonSettings;
 
         public RedisCacher()
         {
             _cacheSleeve = CacheManager.Settings;
             _cacheSleeve.Debug = true;
+
+            _jsonSettings = new JsonSerializerSettings
+            {
+                TypeNameHandling = TypeNameHandling.Objects
+            };
         }
 
 
@@ -40,7 +47,7 @@ namespace CacheSleeve
                 return (T)(object)result;
             try
             {
-                return JsonConvert.DeserializeObject<T>(result, new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Objects });
+                return JsonConvert.DeserializeObject<T>(result, _jsonSettings);
             }
             catch (JsonReaderException)
             {
@@ -152,9 +159,10 @@ namespace CacheSleeve
         public async Task<T> GetAsync<T>(string key)
         {
             var conn = _cacheSleeve.GetDatebase();
+
             if (typeof(T) == typeof(byte[]))
             {
-                dynamic byteResult = await conn.StringGetAsync(_cacheSleeve.AddPrefix(key));
+                object byteResult = await conn.StringGetAsync(_cacheSleeve.AddPrefix(key));
                 return (T)byteResult;
             }
             string result;
@@ -170,11 +178,11 @@ namespace CacheSleeve
                 return (T)(object)result;
             try
             {
-                return JsonConvert.DeserializeObject<T>(result, new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Objects });
+                return JsonConvert.DeserializeObject<T>(result, _jsonSettings);
             }
             catch (JsonReaderException)
             {
-                RemoveAsync(key); // this might be a really bad idea
+                Remove(key); // this might be a really bad idea
                 return default(T);
             }
         }
@@ -236,7 +244,7 @@ namespace CacheSleeve
             var tasks = new List<Task>();
             foreach (var key in keys)
                 tasks.Add(RemoveAsync(_cacheSleeve.StripPrefix(key)));
-            Task.WaitAll(tasks.ToArray());
+            await Task.WhenAll(tasks.ToArray());
         }
 
         public async Task<IEnumerable<Key>> GetAllKeysAsync()
@@ -247,7 +255,7 @@ namespace CacheSleeve
             var tasks = new Dictionary<string, Task<TimeSpan?>>();
             foreach (var keyString in keyStrings)
                 tasks.Add(keyString, conn.KeyTimeToLiveAsync(keyString));
-            Task.WaitAll(tasks.Values.ToArray());
+            await Task.WhenAll(tasks.Values.ToArray());
             foreach (var keyString in keyStrings)
             {
                 var ttl = tasks[keyString].Result;
@@ -297,16 +305,29 @@ namespace CacheSleeve
         private bool InternalSet<T>(string key, T value, string parentKey = null)
         {
             var conn = _cacheSleeve.GetDatebase();
-            var bytesValue = value as byte[];
             try
             {
-                if (bytesValue != null)
-                    conn.StringSet(_cacheSleeve.AddPrefix(key), bytesValue);
+                if (typeof(T) == typeof(byte[]))
+                {
+                     var bytesValue = value as byte[];
+
+                     if (bytesValue != null)
+                     {
+                         conn.StringSet(_cacheSleeve.AddPrefix(key), bytesValue);
+                     }
+                }
                 else if (typeof(T) == typeof(string))
-                    conn.StringSet(_cacheSleeve.AddPrefix(key), value as string);
+                {
+                    var stringValue = value as string;
+
+                    if (stringValue != null)
+                    {
+                        conn.StringSet(_cacheSleeve.AddPrefix(key), value as string);
+                    }
+                }
                 else
                 {
-                    var valueString = JsonConvert.SerializeObject(value, new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Objects });
+                    var valueString = JsonConvert.SerializeObject(value, this._jsonSettings);
                     conn.StringSet(_cacheSleeve.AddPrefix(key), valueString);
                 }
                 if (_cacheSleeve.Debug)
@@ -330,16 +351,29 @@ namespace CacheSleeve
         private async Task<bool> InternalSetAsync<T>(string key, T value, string parentKey = null)
         {
             var conn = _cacheSleeve.GetDatebase();
-            var bytesValue = value as byte[];
             try
             {
-                if (bytesValue != null)
-                    await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), bytesValue);
+                if (typeof(T) == typeof(byte[]))
+                {
+                    var bytesValue = value as byte[];
+
+                    if (bytesValue != null)
+                    {
+                        await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), bytesValue);
+                    }
+                }
                 else if (typeof(T) == typeof(string))
-                    await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), value as string);
+                {
+                    var stringValue = value as string;
+
+                    if (stringValue != null)
+                    {
+                        await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), stringValue);
+                    }
+                }
                 else
                 {
-                    var valueString = JsonConvert.SerializeObject(value, new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.Objects });
+                    var valueString = JsonConvert.SerializeObject(value, this._jsonSettings);
                     await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), valueString);
                 }
                 if (_cacheSleeve.Debug)
@@ -364,14 +398,17 @@ namespace CacheSleeve
                 return;
 
             var conn = _cacheSleeve.GetDatebase();
-            conn.ListRightPush(parentKey + ".children", childKey);
-            conn.StringSet(childKey + ".parent", parentKey);
+            var parentDepKey = parentKey + ".children";
+            var childDepKey = childKey + ".parent";
+
+            conn.ListRightPush(parentDepKey, childKey);
+            conn.StringSet(childDepKey, parentKey);
             var ttl = conn.KeyTimeToLive(parentKey);
             if (ttl != null && ttl.Value.TotalSeconds > -1)
             {
-                var children = conn.ListRange(parentKey + ".children", 0, (int)conn.ListLength(parentKey + ".children")).ToList();
-                conn.KeyExpire(parentKey + ".children", ttl);
-                conn.KeyExpire(childKey + ".parent", ttl);
+                var children = conn.ListRange(parentDepKey, 0, -1).ToList();
+                conn.KeyExpire(parentDepKey, ttl);
+                conn.KeyExpire(childDepKey, ttl);
                 foreach (var child in children)
                     conn.KeyExpire(child.ToString(), ttl);
             }
@@ -389,21 +426,24 @@ namespace CacheSleeve
                 return;
 
             var conn = _cacheSleeve.GetDatebase();
-            var parentKetPushTask = conn.ListRightPushAsync(parentKey + ".children", childKey);
-            var childKeySetTask = conn.StringSetAsync(childKey + ".parent", parentKey);
+            var parentDepKey = parentKey + ".children";
+            var childDepKey = childKey + ".parent";
+            var parentKetPushTask = conn.ListRightPushAsync(parentDepKey, childKey);
+            var childKeySetTask = conn.StringSetAsync(childDepKey, parentKey);
             var ttlTask = conn.KeyTimeToLiveAsync(parentKey);
-            Task.WaitAll(parentKetPushTask, childKeySetTask, ttlTask);
+            await Task.WhenAll(parentKetPushTask, childKeySetTask, ttlTask);
             var ttl = ttlTask.Result;
             if (ttl != null && ttl.Value.TotalSeconds > -1)
             {
-                var children = (await conn.ListRangeAsync(parentKey + ".children", 0, (int) await conn.ListLengthAsync(parentKey + ".children"))).ToList();
-                var parentKeyExpireTask = conn.KeyExpireAsync(parentKey + ".children", ttl);
-                var childKeyExpireTask = conn.KeyExpireAsync(childKey + ".parent", ttl);
-                Task.WaitAll(parentKeyExpireTask, childKeyExpireTask);
-                var childExpirationTasks = new List<Task>();
+                var children = (await conn.ListRangeAsync(parentDepKey, 0, -1)).ToList();
+                var expirationTasks = new List<Task>(children.Count + 2);
+                expirationTasks.Add(conn.KeyExpireAsync(parentDepKey, ttl));
+                expirationTasks.Add(conn.KeyExpireAsync(childDepKey, ttl));
+                
                 foreach (var child in children)
-                    childExpirationTasks.Add(conn.KeyExpireAsync(child.ToString(), ttl));
-                Task.WaitAll(childExpirationTasks.ToArray());
+                    expirationTasks.Add(conn.KeyExpireAsync(child.ToString(), ttl));
+                
+                await Task.WhenAll(expirationTasks.ToArray());
             }
         }
 
@@ -417,13 +457,21 @@ namespace CacheSleeve
                 return;
 
             var conn = _cacheSleeve.GetDatebase();
-            var children = conn.ListRange(key + ".children", 0, (int)conn.ListLength(key + ".children")).ToList();
-            foreach (var child in children)
+            var depKey = key + ".children";
+            var children = conn.ListRange(depKey, 0, -1).ToList();
+            if (children.Count > 0)
             {
-                conn.KeyDelete(child.ToString());
-                conn.KeyDelete(child + ".parent");
+                var keys = new List<RedisKey>(children.Count * 2 + 1);
+                keys.Add(depKey);
+                foreach (var child in children)
+                {
+                    keys.Add(child.ToString());
+                    keys.Add(child + ".parent");
+                }
+
+                conn.KeyDelete(keys.ToArray());
             }
-            conn.KeyDelete(key + ".children");
+            
         }
 
         /// <summary>
@@ -436,15 +484,19 @@ namespace CacheSleeve
                 return;
 
             var conn = _cacheSleeve.GetDatebase();
-            var children = (await conn.ListRangeAsync(key + ".children", 0, (int)conn.ListLength(key + ".children"))).ToList();
-            var tasks = new List<Task>();
-            foreach (var child in children)
+            var depKey = key + ".children";
+            var children = (await conn.ListRangeAsync(depKey, 0, -1)).ToList();
+            if (children.Count > 0)
             {
-                tasks.Add(conn.KeyDeleteAsync(child.ToString()));
-                tasks.Add(conn.KeyDeleteAsync(child + ".parent"));
+                var keys = new List<RedisKey>(children.Count * 2 + 1);
+                keys.Add(depKey);
+                foreach (var child in children)
+                {
+                    keys.Add(child.ToString());
+                    keys.Add(child + ".parent");
+                }
+                await conn.KeyDeleteAsync(keys.ToArray());
             }
-            Task.WaitAll(tasks.ToArray());
-            await conn.KeyDeleteAsync(key + ".children");
         }
     }
 }

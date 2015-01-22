@@ -145,7 +145,7 @@ namespace CacheSleeve
             catch (Exception)
             {
                 _localCacher.Remove(key);
-                _remoteCacher.RemoveAsync(key); // this might be a really bad idea
+                _remoteCacher.Remove(key); // this might be a really bad idea
                 return false;
             }
         }
@@ -161,7 +161,7 @@ namespace CacheSleeve
             catch (Exception)
             {
                 _localCacher.Remove(key);
-                _remoteCacher.RemoveAsync(key); // this might be a really bad idea
+                _remoteCacher.Remove(key); // this might be a really bad idea
                 return false;
             }
         }
@@ -177,7 +177,7 @@ namespace CacheSleeve
             catch (Exception)
             {
                 _localCacher.Remove(key);
-                _remoteCacher.RemoveAsync(key); // this might be a really bad idea
+                _remoteCacher.Remove(key); // this might be a really bad idea
                 return false;
             }
         }
