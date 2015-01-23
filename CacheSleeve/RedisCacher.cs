@@ -21,7 +21,9 @@ namespace CacheSleeve
 
             _jsonSettings = new JsonSerializerSettings
             {
-                TypeNameHandling = TypeNameHandling.Objects
+                TypeNameHandling = TypeNameHandling.Auto,
+                NullValueHandling = NullValueHandling.Ignore,
+                DefaultValueHandling = DefaultValueHandling.IgnoreAndPopulate
             };
         }
 
@@ -47,7 +49,7 @@ namespace CacheSleeve
                 return (T)(object)result;
             try
             {
-                return JsonConvert.DeserializeObject<T>(result, _jsonSettings);
+                return JsonConvert.DeserializeObject<CacheItem<T>>(result, _jsonSettings).Value;
             }
             catch (JsonReaderException)
             {
@@ -178,7 +180,7 @@ namespace CacheSleeve
                 return (T)(object)result;
             try
             {
-                return JsonConvert.DeserializeObject<T>(result, _jsonSettings);
+                return JsonConvert.DeserializeObject<CacheItem<T>>(result, _jsonSettings).Value;
             }
             catch (JsonReaderException)
             {
@@ -327,7 +329,11 @@ namespace CacheSleeve
                 }
                 else
                 {
-                    var valueString = JsonConvert.SerializeObject(value, this._jsonSettings);
+                    var cacheItem = new CacheItem<T>()
+                    {
+                        Value = value
+                    };
+                    var valueString = JsonConvert.SerializeObject(cacheItem, this._jsonSettings);
                     conn.StringSet(_cacheSleeve.AddPrefix(key), valueString);
                 }
                 if (_cacheSleeve.Debug)
@@ -373,7 +379,11 @@ namespace CacheSleeve
                 }
                 else
                 {
-                    var valueString = JsonConvert.SerializeObject(value, this._jsonSettings);
+                    var cacheItem = new CacheItem<T>()
+                    {
+                        Value = value
+                    };
+                    var valueString = JsonConvert.SerializeObject(cacheItem, this._jsonSettings);
                     await conn.StringSetAsync(_cacheSleeve.AddPrefix(key), valueString);
                 }
                 if (_cacheSleeve.Debug)
@@ -497,6 +507,13 @@ namespace CacheSleeve
                 }
                 await conn.KeyDeleteAsync(keys.ToArray());
             }
+        }
+
+        private class CacheItem<T>
+        {
+            public TimeSpan? SlidingExpiration { get; set; }
+
+            public T Value { get; set; }
         }
     }
 }
