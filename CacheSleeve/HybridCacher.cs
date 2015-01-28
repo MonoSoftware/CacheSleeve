@@ -29,15 +29,36 @@ namespace CacheSleeve
             result = _remoteCacher.Get<T>(key);
             if (result != null)
             {
-                var ttl = (int) _remoteCacher.TimeToLive(key);
+                var ttl = _remoteCacher.TimeToLive(key);
                 var parentKey = _remoteCacher.Get<string>(key + ".parent");
+                if (parentKey != null)
+                {
+                    parentKey = parentKey.Substring(_cacheSleeve.KeyPrefix.Length);
+                }
+                
                 if (ttl > -1)
-                    _localCacher.Set(key, result, TimeSpan.FromSeconds(ttl), _cacheSleeve.StripPrefix(parentKey));
+                    _localCacher.Set(key, result, TimeSpan.FromSeconds(ttl), parentKey);
                 else
-                    _localCacher.Set(key, result, _cacheSleeve.StripPrefix(parentKey));
+                    _localCacher.Set(key, result, parentKey);
+                
                 result = _localCacher.Get<T>(key);
             }
             return result;
+        }
+
+        public T GetOrSet<T>(string key, Func<string, T> valueFactory, DateTime expiresAt, string parentKey = null)
+        {
+            var value = this.Get<T>(key);
+            if (value == null)
+            {
+                value = valueFactory(key);
+                if (value != null && !value.Equals(default(T)))
+                {
+                    this.Set(key, value, expiresAt, parentKey);
+                }
+            }
+
+            return value;
         }
 
         public bool Set<T>(string key, T value, string parentKey = null)
@@ -124,14 +145,35 @@ namespace CacheSleeve
             if (result != null)
             {
                 var ttl = (int)(await _remoteCacher.TimeToLiveAsync(key));
-                var parentKey = await _remoteCacher.GetAsync<string>(key + ".parent");
+                var parentKey = _remoteCacher.Get<string>(key + ".parent");
+                if (parentKey != null)
+                {
+                    parentKey = parentKey.Substring(_cacheSleeve.KeyPrefix.Length);
+                }
+             
                 if (ttl > -1)
-                    _localCacher.Set(key, result, TimeSpan.FromSeconds(ttl), _cacheSleeve.StripPrefix(parentKey));
+                    _localCacher.Set(key, result, TimeSpan.FromSeconds(ttl), parentKey);
                 else
-                    _localCacher.Set(key, result, _cacheSleeve.StripPrefix(parentKey));
+                    _localCacher.Set(key, result, parentKey);
+
                 result = _localCacher.Get<T>(key);
             }
             return result;
+        }
+
+        public async Task<T> GetOrSetAsync<T>(string key, Func<string, Task<T>> valueFactory, DateTime expiresAt, string parentKey = null)
+        {
+            var value = await this.GetAsync<T>(key);
+            if (value == null)
+            {
+                value = await valueFactory(key);
+                if (value != null && !value.Equals(default(T)))
+                {
+                    await this.SetAsync(key, value, expiresAt, parentKey);
+                }
+            }
+
+            return value;
         }
 
         public async Task<bool> SetAsync<T>(string key, T value, string parentKey = null)

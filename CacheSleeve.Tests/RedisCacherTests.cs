@@ -115,14 +115,32 @@ namespace CacheSleeve.Tests
 
         public class Failsafes : RedisCacherTests
         {
+            //[Fact]
+            //public void RemovesAndReturnsDefaultIfGetItemNotOfValidTypeOfT()
+            //{
+            //    _redisCacher.Set("key", TestSettings.George);
+            //    var result = _redisCacher.Get<int>("key");
+            //    Assert.Equal(0, result);
+            //    var result2 = _redisCacher.Get<Monkey>("key");
+            //    Assert.Equal(null, result2);
+            //}
+
             [Fact]
-            public void RemovesAndReturnsDefaultIfGetItemNotOfValidTypeOfT()
+            public void ThrowsExceptionIfGetItemNotOfValidTypeOfT()
             {
                 _redisCacher.Set("key", TestSettings.George);
-                var result = _redisCacher.Get<int>("key");
-                Assert.Equal(0, result);
-                var result2 = _redisCacher.Get<Monkey>("key");
-                Assert.Equal(null, result2);
+
+                Exception ex = null;
+                try
+                {
+                    _redisCacher.Get<int>("key");
+                }
+                catch (Exception e)
+                {
+                    ex = e;
+                }
+
+                Assert.NotNull(ex);
             }
         }
 

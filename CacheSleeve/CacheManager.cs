@@ -14,7 +14,7 @@ using Encoding = System.Text.Encoding;
 
 namespace CacheSleeve
 {
-    public sealed class CacheManager
+    public sealed class CacheManager : ICacheManager
     {
         private bool _setup;
         private ConnectionMultiplexer _redisConnection;
@@ -43,12 +43,18 @@ namespace CacheSleeve
 
         public static void Init(string redisHost, int redisPort = 6379, string redisPassword = null, int redisDb = 0, string keyPrefix = "cs.")
         {
-            PopulateSettings(redisHost, redisPort, redisPassword, redisDb, keyPrefix);
-
             var configuration =
-                ConfigurationOptions.Parse(string.Format("{0}:{1}", Settings.RedisHost, Settings.RedisPort));
+                ConfigurationOptions.Parse(string.Format("{0}:{1}", redisHost, redisPort));
             configuration.AllowAdmin = true;
-            Settings._redisConnection = ConnectionMultiplexer.Connect(configuration);
+            
+            Init(configuration, redisDb, keyPrefix);
+        }
+
+        public static void Init(ConfigurationOptions config, int redisDb = 0, string keyPrefix = "cs.")
+        {
+            PopulateSettings(config, redisDb, keyPrefix);
+            
+            Settings._redisConnection = ConnectionMultiplexer.Connect(config);
 
             // Setup pub/sub for cache syncing
             var subscriber = Settings._redisConnection.GetSubscriber();
@@ -56,14 +62,20 @@ namespace CacheSleeve
             subscriber.Subscribe("cacheSleeve.flush*", (redisChannel, value) => Settings.LocalCacher.FlushAll());
         }
 
-        public async static Task InitAsync(string redisHost, int redisPort = 6379, string redisPassword = null, int redisDb = 0, string keyPrefix = "cs.")
+        public static Task InitAsync(string redisHost, int redisPort = 6379, string redisPassword = null, int redisDb = 0, string keyPrefix = "cs.")
         {
-            PopulateSettings(redisHost, redisPort, redisPassword, redisDb, keyPrefix);
-
             var configuration =
-                ConfigurationOptions.Parse(string.Format("{0}:{1}", Settings.RedisHost, Settings.RedisPort));
+                ConfigurationOptions.Parse(string.Format("{0}:{1}", redisHost, redisPort));
             configuration.AllowAdmin = true;
-            Settings._redisConnection = await ConnectionMultiplexer.ConnectAsync(configuration);
+            
+            return InitAsync(configuration, redisDb, keyPrefix);
+        }
+
+        public async static Task InitAsync(ConfigurationOptions config, int redisDb = 0, string keyPrefix = "cs.")
+        {
+            PopulateSettings(config, redisDb, keyPrefix);
+
+            Settings._redisConnection = ConnectionMultiplexer.Connect(config);
 
             // Setup pub/sub for cache syncing
             var subscriber = Settings._redisConnection.GetSubscriber();
@@ -72,15 +84,13 @@ namespace CacheSleeve
             await Task.WhenAll(removeSubscription, flushSubscription);
         }
 
-        private static void PopulateSettings(string redisHost, int redisPort = 6379, string redisPassword = null, int redisDb = 0, string keyPrefix = "cs.")
+        private static void PopulateSettings(ConfigurationOptions config, int redisDb = 0, string keyPrefix = "cs.")
         {
             if (Settings._setup)
                 if (!UnitTestDetector.IsRunningFromXunit) throw new InvalidOperationException("Cannot reinitialize CacheSleeve");
             Settings._setup = true;
 
-            Settings.RedisHost = redisHost;
-            Settings.RedisPort = redisPort;
-            Settings.RedisPassword = redisPassword;
+            Settings.RedisConfiguration = config;
             Settings.KeyPrefix = keyPrefix;
             Settings.RedisDb = redisDb;
 
@@ -127,19 +137,9 @@ namespace CacheSleeve
         public string KeyPrefix { get; private set; }
 
         /// <summary>
-        /// The url to the Redis backplane.
+        /// Redis connection configuration.
         /// </summary>
-        public string RedisHost { get; private set; }
-
-        /// <summary>
-        /// The port for the Redis backplane.
-        /// </summary>
-        public int RedisPort { get; private set; }
-
-        /// <summary>
-        /// The password for the Redis backplane.
-        /// </summary>
-        public string RedisPassword { get; private set; }
+        public ConfigurationOptions RedisConfiguration { get; private set; }
 
         /// <summary>
         /// The database to use on the Redis server.
@@ -151,10 +151,18 @@ namespace CacheSleeve
             return _redisConnection.GetDatabase(RedisDb);
         }
         
-        public IEnumerable<RedisKey> GetAllKeys()
+        public IEnumerable<RedisKey> GetAllKeys(string pattern = null)
         {
-            var server = _redisConnection.GetServer(string.Format("{0}:{1}", Settings.RedisHost, Settings.RedisPort));
-            var keys = server.Keys(database: Settings.RedisDb, pattern: Settings.AddPrefix("*"));
+            var keys = new List<RedisKey>();
+            foreach (var endpoint in _redisConnection.GetEndPoints())
+            {
+                var server = _redisConnection.GetServer(endpoint);
+                if (!server.IsSlave)
+                {
+                    keys.AddRange(server.Keys(database: Settings.RedisDb, pattern: pattern != null ? Settings.AddPrefix(pattern) : Settings.AddPrefix("*")));
+                }
+            }
+            
             return keys;
         }
 
@@ -166,19 +174,6 @@ namespace CacheSleeve
         public string AddPrefix(string key)
         {
             return string.Format("{0}{1}", KeyPrefix, key);
-        }
-
-        /// <summary>
-        /// Removes the prefix from the key.
-        /// </summary>
-        /// <param name="key">The internal key with the prefix attached.</param>
-        /// <returns>The key without the prefix.</returns>
-        public string StripPrefix(string key)
-        {
-            if (key == null)
-                return null;
-            var regex = new Regex(string.Format("^{0}", KeyPrefix));
-            return regex.Replace(key, String.Empty);
         }
 
         /// <summary>
