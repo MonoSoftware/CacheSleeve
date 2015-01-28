@@ -10,8 +10,6 @@ namespace CacheSleeve
         
         bool Debug { get; set; }
         
-        string GenerateOverview();
-        
         IEnumerable<RedisKey> GetAllKeys(string pattern = null);
         
         IDatabase GetDatebase();

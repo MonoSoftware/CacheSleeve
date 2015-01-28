@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using System.Web;
 using CacheSleeve.Models;
 using CacheSleeve.Utilities;
-using RazorEngine;
 using StackExchange.Redis;
 using Encoding = System.Text.Encoding;
 
@@ -96,24 +95,6 @@ namespace CacheSleeve
 
             Settings.RemoteCacher = new RedisCacher();
             Settings.LocalCacher = new HttpContextCacher();
-        }
-
-        public string GenerateOverview()
-        {
-            const string resourceName = "CacheSleeve.Razor.Overview.cshtml";
-            var model = new Overview
-                        {
-                            RemoteKeys = RemoteCacher.GetAllKeys(),
-                            LocalKeys = LocalCacher.GetAllKeys()
-                        };
-            var assembly = Assembly.GetExecutingAssembly();
-            using (var stream = assembly.GetManifestResourceStream(resourceName))
-            {
-                if (stream == null)
-                    return "";
-                using (var reader = new StreamReader(stream))
-                    return Razor.Parse(reader.ReadToEnd(), model);
-            }
         }
 
         /// <summary>

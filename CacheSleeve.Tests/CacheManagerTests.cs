@@ -48,7 +48,7 @@ namespace CacheSleeve.Tests
         [Fact]
         public void GeneratesOverview()
         {
-            var result = _cacheSleeve.GenerateOverview();
+            var result = Overview.Overview.Generate(_cacheSleeve);
             Assert.False(string.IsNullOrWhiteSpace(result));
         }
 
@@ -57,7 +57,7 @@ namespace CacheSleeve.Tests
         {
             _remoteCacher.Set("key1", "value1", DateTime.Now.AddSeconds(30));
             _localCacher.Set("key2", "value2", DateTime.Now.AddMinutes(5));
-            var result = _cacheSleeve.GenerateOverview();
+            var result = Overview.Overview.Generate(_cacheSleeve);
             Assert.Equal(1, result.Select((c, i) => result.Substring(i)).Count(sub => sub.StartsWith("key1")));
             Assert.Equal(1, result.Select((c, i) => result.Substring(i)).Count(sub => sub.StartsWith("key2")));
         }
