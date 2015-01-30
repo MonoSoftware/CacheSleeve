@@ -13,5 +13,18 @@ namespace CacheSleeve.Models
 
         public string KeyName { get; private set; }
         public DateTime? ExpirationDate { get; private set; }
+
+        public override bool Equals(object obj)
+        {
+            var objType = obj.GetType();
+            if (objType == typeof(Key))
+            {
+                return this.KeyName == ((Key)obj).KeyName;
+            }
+            else
+            {
+                return base.Equals(obj);
+            }
+        }
     }
 }

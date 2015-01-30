@@ -48,17 +48,19 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CacheManager.cs" />
+    <Compile Include="CacheTracer.cs" />
     <Compile Include="HttpContextCacher.cs" />
     <Compile Include="HybridCacher.cs" />
     <Compile Include="IAsyncCacher.cs" />
-    <Compile Include="ICacheManager.cs" />
+    <Compile Include="ICacheLogger.cs" />
     <Compile Include="ICacher.cs" />
     <Compile Include="IObjectSerializer.cs" />
+    <Compile Include="IRedisConnection.cs" />
     <Compile Include="JsonObjectSerializer.cs" />
     <Compile Include="Models\Key.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RedisCacher.cs" />
+    <Compile Include="RedisConnection.cs" />
     <Compile Include="Utilities\UnitTestDetector.cs" />
   </ItemGroup>
   <ItemGroup>

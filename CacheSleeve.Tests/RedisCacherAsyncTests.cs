@@ -10,18 +10,17 @@ namespace CacheSleeve.Tests
 {
     public class RedisCacherAsyncTests : IDisposable
     {
-        private RedisCacher _redisCacher;
-        private readonly CacheManager _cacheSleeve;
+        private readonly RedisCacher _redisCacher;
+        private readonly RedisConnection _redisConnection;
 
         public RedisCacherAsyncTests()
         {
             // have to fake an http context to use http context cache
             HttpContext.Current = new HttpContext(new HttpRequest(null, "http://tempuri.org", null), new HttpResponse(null));
-
-            CacheManager.Init(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb, TestSettings.KeyPrefix);
-            _cacheSleeve = CacheManager.Settings;
-
-            _redisCacher = CacheManager.Settings.RemoteCacher;
+            
+            _redisConnection = RedisConnection.Create(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb);
+            
+            _redisCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), null);
         }
 
         public class Basics : RedisCacherAsyncTests
@@ -94,8 +93,8 @@ namespace CacheSleeve.Tests
                 await _redisCacher.SetAsync("key1", "value");
                 await _redisCacher.SetAsync("key2", "value");
                 var result = await _redisCacher.GetAllKeysAsync();
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key1")));
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key2")));
+                Assert.True(result.Select(k => k.KeyName).Contains("key1"));
+                Assert.True(result.Select(k => k.KeyName).Contains("key2"));
             }
 
             [Fact]
@@ -162,9 +161,9 @@ namespace CacheSleeve.Tests
             {
                 await _redisCacher.SetAsync("key1", "value1");
                 await  _redisCacher.SetAsync("key2", "value2", "key1");
-                var conn = _cacheSleeve.GetDatebase();
-                var childrenKey = CacheManager.Settings.AddPrefix("key1.children");
-                var result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
+                var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
+                var childrenKey = "key1.children";
+                var result = conn.ListRange(childrenKey, 0, -1);
                 Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
             }
 
@@ -174,7 +173,7 @@ namespace CacheSleeve.Tests
                 await _redisCacher.SetAsync("key1", "value1");
                 await _redisCacher.SetAsync("key2", "value2", "key1");
                 var result = await _redisCacher.GetAsync<string>("key2.parent");
-                Assert.Equal(CacheManager.Settings.AddPrefix("key1"), result);
+                Assert.Equal("key1", result);
             }
 
             [Fact]
@@ -212,9 +211,9 @@ namespace CacheSleeve.Tests
             {
                 await _redisCacher.SetAsync("key1", "value1");
                 await _redisCacher.SetAsync("key2", "value2", "key1");
-                var conn = _cacheSleeve.GetDatebase();
-                var childrenKey = CacheManager.Settings.AddPrefix("key1.children");
-                var result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
+                var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
+                var childrenKey = "key1.children";
+                var result = conn.ListRange(childrenKey, 0, -1);
                 Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
                 await _redisCacher.SetAsync("key1", "value3");
                 result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
@@ -238,9 +237,9 @@ namespace CacheSleeve.Tests
             {
                 await _redisCacher.SetAsync("key1", "value1");
                 await _redisCacher.SetAsync("key2", "value2", "key1");
-                var conn = _cacheSleeve.GetDatebase();
-                var childrenKey = CacheManager.Settings.AddPrefix("key1.children");
-                var result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
+                var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
+                var childrenKey = "key1.children";
+                var result = conn.ListRange(childrenKey, 0, -1);
                 Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
                 await _redisCacher.RemoveAsync("key1");
                 result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
@@ -253,7 +252,7 @@ namespace CacheSleeve.Tests
                 await _redisCacher.SetAsync("key1", "value1");
                 await _redisCacher.SetAsync("key2", "value2", "key1");
                 var result = await _redisCacher.GetAsync<string>("key2.parent");
-                Assert.Equal(CacheManager.Settings.AddPrefix("key1"), result);
+                Assert.Equal("key1", result);
                 await _redisCacher.RemoveAsync("key2");
                 result = await _redisCacher.GetAsync<string>("key2.parent");
                 Assert.Equal(null, result);
@@ -291,7 +290,7 @@ namespace CacheSleeve.Tests
         public void Dispose()
         {
             _redisCacher.FlushAll();
-            _redisCacher = null;
+            _redisConnection.Connection.Dispose();
         }
     }
 }

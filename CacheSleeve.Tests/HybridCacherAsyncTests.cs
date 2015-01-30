@@ -5,15 +5,16 @@ using System.Threading;
 using System.Web;
 using StackExchange.Redis;
 using Xunit;
+using Moq;
 
 namespace CacheSleeve.Tests
 {
     public class HybridCacherAsyncTests : IDisposable
     {
-        private HybridCacher _hybridCacher;
-        private RedisCacher _remoteCacher;
-        private HttpContextCacher _localCacher;
-        private readonly CacheManager _cacheSleeve;
+        private readonly HybridCacher _hybridCacher;
+        private readonly RedisCacher _remoteCacher;
+        private readonly HttpContextCacher _localCacher;
+        private readonly RedisConnection _redisConnection;
 
         private delegate void SubscriptionHitHandler(string key, string message);
         private event SubscriptionHitHandler SubscriptionHit;
@@ -28,23 +29,18 @@ namespace CacheSleeve.Tests
             // have to fake an http context to use http context cache
             HttpContext.Current = new HttpContext(new HttpRequest(null, "http://tempuri.org", null), new HttpResponse(null));
 
-            CacheManager.Init(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb, TestSettings.KeyPrefix);
-            _cacheSleeve = CacheManager.Settings;
+            _redisConnection = RedisConnection.Create(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb);
 
-            var cacheSleeve = CacheManager.Settings;
+            var subscriber = _redisConnection.Connection.GetSubscriber();
+            subscriber.Subscribe("cacheSleeve.remove", (redisChannel, value) => OnSubscriptionHit(redisChannel, value));
+            subscriber.Subscribe("cacheSleeve.flush", (redisChannel, value) => OnSubscriptionHit(redisChannel, "flush"));
 
-            var configuration =
-                ConfigurationOptions.Parse(string.Format("{0}:{1}", TestSettings.RedisHost, TestSettings.RedisPort));
-            configuration.AllowAdmin = true;
-            var redisConnection = ConnectionMultiplexer.Connect(configuration);
+            var nullLogger = new Mock<ICacheLogger>().Object;
 
-            var subscriber = redisConnection.GetSubscriber();
-            subscriber.Subscribe("cacheSleeve.remove.*", (redisChannel, value) => OnSubscriptionHit(redisChannel, GetString(value)));
-            subscriber.Subscribe("cacheSleeve.flush*", (redisChannel, value) => OnSubscriptionHit(redisChannel, "flush"));
+            _remoteCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), nullLogger);
+            _localCacher = new HttpContextCacher(nullLogger);
 
-            _hybridCacher = new HybridCacher();
-            _remoteCacher = cacheSleeve.RemoteCacher;
-            _localCacher = cacheSleeve.LocalCacher;
+            _hybridCacher = new HybridCacher(_remoteCacher, _localCacher);
         }
 
 
@@ -90,8 +86,8 @@ namespace CacheSleeve.Tests
                 await _remoteCacher.SetAsync("key1", "value");
                 _localCacher.Set("key2", "value");
                 var result = await _hybridCacher.GetAllKeysAsync();
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key1")));
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key2")));
+                Assert.True(result.Select(k => k.KeyName).Contains(_hybridCacher.AddPrefix("key1")));
+                Assert.True(result.Select(k => k.KeyName).Contains(_hybridCacher.AddPrefix("key2")));
             }
 
             [Fact]
@@ -157,20 +153,7 @@ namespace CacheSleeve.Tests
         public void Dispose()
         {
             _hybridCacher.FlushAll();
-            _hybridCacher = null;
-            _remoteCacher = null;
-            _localCacher = null;
-        }
-
-        /// <summary>
-        /// Converts a byte[] to a string.
-        /// </summary>
-        /// <param name="bytes">The bytes to convert.</param>
-        /// <returns>The resulting string.</returns>
-        private static string GetString(byte[] bytes)
-        {
-            var buffer = Encoding.Convert(Encoding.GetEncoding("iso-8859-1"), Encoding.UTF8, bytes);
-            return Encoding.UTF8.GetString(buffer, 0, bytes.Count());
+            //_redisConnection.Connection.Dispose();
         }
     }
 }

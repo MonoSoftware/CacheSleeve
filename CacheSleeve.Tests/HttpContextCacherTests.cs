@@ -5,23 +5,22 @@ using System.Threading;
 using System.Web;
 using CacheSleeve.Tests.TestObjects;
 using Xunit;
+using Moq;
 
 namespace CacheSleeve.Tests
 {
     public class HttpContextCacherTests : IDisposable
     {
         private HttpContextCacher _httpContextCacher;
-        private readonly CacheManager _cacheSleeve;
 
         public HttpContextCacherTests()
         {
             // have to fake an http context to use http context cache
             HttpContext.Current = new HttpContext(new HttpRequest(null, "http://tempuri.org", null), new HttpResponse(null));
 
-            CacheManager.Init(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb, TestSettings.KeyPrefix);
-            _cacheSleeve = CacheManager.Settings;
+            var nullLogger = new Mock<ICacheLogger>().Object;
 
-            _httpContextCacher = CacheManager.Settings.LocalCacher;
+            _httpContextCacher = new HttpContextCacher(nullLogger);
         }
 
         public class Basics : HttpContextCacherTests
@@ -93,8 +92,8 @@ namespace CacheSleeve.Tests
                 _httpContextCacher.Set("key1", "value");
                 _httpContextCacher.Set("key2", "value");
                 var result = _httpContextCacher.GetAllKeys();
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key1")));
-                Assert.True(result.Select(k => k.KeyName).Contains(_cacheSleeve.AddPrefix("key2")));
+                Assert.True(result.Select(k => k.KeyName).Contains("key1"));
+                Assert.True(result.Select(k => k.KeyName).Contains("key2"));
             }
 
             [Fact]

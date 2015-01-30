@@ -32,6 +32,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Moq">
+      <HintPath>..\packages\Moq.4.2.1409.1722\lib\net40\Moq.dll</HintPath>
+    </Reference>
     <Reference Include="StackExchange.Redis">
       <HintPath>..\packages\StackExchange.Redis.1.0.371\lib\net45\StackExchange.Redis.dll</HintPath>
     </Reference>
@@ -48,7 +51,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CacheManagerTests.cs" />
+    <Compile Include="OverviewGeneratorTests.cs" />
     <Compile Include="HttpContextCacherTests.cs" />
     <Compile Include="HybridCacherAsyncTests.cs" />
     <Compile Include="HybridCacherTests.cs" />

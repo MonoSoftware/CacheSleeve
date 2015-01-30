@@ -11,13 +11,13 @@ namespace CacheSleeve.Overview
 {
     public class Overview
     {
-        public static string Generate(ICacheManager cacheManager)
+        public static string Generate(HybridCacher cacher)
         {
             const string resourceName = "CacheSleeve.Overview.Razor.Overview.cshtml";
             var model = new CacheSleeve.Models.Overview
             {
-                RemoteKeys = cacheManager.RemoteCacher.GetAllKeys(),
-                LocalKeys = cacheManager.LocalCacher.GetAllKeys()
+                RemoteKeys = cacher.RemoteCacher.GetAllKeys(),
+                LocalKeys = cacher.LocalCacher.GetAllKeys()
             };
             var assembly = Assembly.GetExecutingAssembly();
             using (var stream = assembly.GetManifestResourceStream(resourceName))

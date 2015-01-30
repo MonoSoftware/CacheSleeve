@@ -11,19 +11,19 @@ namespace CacheSleeve
     public class HttpContextCacher : ICacher
     {
         private readonly Cache _cache;
-        private readonly CacheManager _cacheSleeve;
+        private readonly ICacheLogger _logger;
 
-        public HttpContextCacher()
+        public HttpContextCacher(
+            ICacheLogger logger
+            )
         {
+            _logger = logger;
             _cache = System.Web.HttpContext.Current.Cache;
-            _cacheSleeve = CacheManager.Settings;
-            _cacheSleeve.Debug = true;
         }
-
-
+        
         public T Get<T>(string key)
         {
-            var cacheEntry = (CacheEntry)_cache.Get(_cacheSleeve.AddPrefix(key));
+            var cacheEntry = (CacheEntry)_cache.Get(key);
 
             if (cacheEntry != null)
             {
@@ -49,20 +49,21 @@ namespace CacheSleeve
 
         public bool Set<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
         {
-            var entry = new CacheEntry(value, DateTime.Now.Add(expiresIn));
-            return InternalSet(key, entry, parentKey);
+            return this.Set(key, value, DateTime.Now.Add(expiresIn), parentKey);
         }
         
         public bool Remove(string key)
         {
-            if (_cache.Get(_cacheSleeve.AddPrefix(key)) == null)
+            if (_cache.Get(key) == null)
                 return false;
             try
             {
-                _cache.Remove(_cacheSleeve.AddPrefix(key));
-                _cache.Remove(_cacheSleeve.AddPrefix(key + ".parent"));
-                if (_cacheSleeve.Debug)
-                    Trace.WriteLine(string.Format("CS HttpContext: Removed cache item with key {0}", key));
+                _cache.Remove(key);
+
+                if (_logger.DebugEnabled)
+                {
+                    _logger.Debug(String.Format("CS HttpContext: Removed cache item with key {0}", key));
+                }
                 return true;
             }
             catch (Exception)
@@ -82,7 +83,7 @@ namespace CacheSleeve
         {
             var keys = _cache.Cast<DictionaryEntry>()
                 .Where(de => de.Value.GetType() == typeof(CacheEntry))
-                .Select(de => new Key((de.Key as string), (de.Value as CacheEntry).ExpiresAt));
+                .Select(de => new Key((string)de.Key, ((CacheEntry)de.Value).ExpiresAt));
             return keys;
         }
 
@@ -93,7 +94,7 @@ namespace CacheSleeve
         /// <returns></returns>
         public int TimeToLive(string key)
         {
-            var result = (CacheEntry)_cache.Get(_cacheSleeve.AddPrefix(key));
+            var result = (CacheEntry)_cache.Get(key);
             if (result == null || result.ExpiresAt == null)
                 return -1;
             return (int)(result.ExpiresAt.Value - DateTime.Now).TotalSeconds;
@@ -109,15 +110,19 @@ namespace CacheSleeve
         {
             CacheDependency cacheDependency = null;
             if (!string.IsNullOrWhiteSpace(parentKey))
-                cacheDependency = new CacheDependency(null, new[] { _cacheSleeve.AddPrefix(parentKey) });
+                cacheDependency = new CacheDependency(null, new[] { parentKey });
             try
             {
                 if (entry.ExpiresAt == null)
-                    _cache.Insert(_cacheSleeve.AddPrefix(key), entry, cacheDependency);
+                    _cache.Insert(key, entry, cacheDependency);
                 else
-                    _cache.Insert(_cacheSleeve.AddPrefix(key), entry, cacheDependency, entry.ExpiresAt.Value, Cache.NoSlidingExpiration);
-                if (_cacheSleeve.Debug)
-                    Trace.WriteLine(string.Format("CS HttpContext: Set cache item with key {0}", key));
+                    _cache.Insert(key, entry, cacheDependency, entry.ExpiresAt.Value, Cache.NoSlidingExpiration);
+
+                if (_logger.DebugEnabled)
+                {
+                    _logger.Debug(String.Format("CS HttpContext: Set cache item with key {0}", key));
+                }
+                
                 return true;
             }
             catch (Exception)
