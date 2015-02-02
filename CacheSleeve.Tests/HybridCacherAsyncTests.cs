@@ -40,7 +40,10 @@ namespace CacheSleeve.Tests
             _remoteCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), nullLogger);
             _localCacher = new HttpContextCacher(nullLogger);
 
-            _hybridCacher = new HybridCacher(_remoteCacher, _localCacher);
+            var configMock = new Mock<IHybridCacherConfig>();
+            configMock.Setup(c => c.KeyPrefix).Returns("test.");
+
+            _hybridCacher = new HybridCacher(configMock.Object, _remoteCacher, _localCacher);
         }
 
 

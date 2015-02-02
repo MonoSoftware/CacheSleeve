@@ -32,15 +32,18 @@ namespace CacheSleeve.Tests
             _redisConnection = RedisConnection.Create(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb);
 
             var subscriber = _redisConnection.Connection.GetSubscriber();
-            subscriber.Subscribe("cacheSleeve.remove", (redisChannel, value) => OnSubscriptionHit(redisChannel, value));
-            subscriber.Subscribe("cacheSleeve.flush", (redisChannel, value) => OnSubscriptionHit(redisChannel, "flush"));
+            subscriber.Subscribe("cacheSleeve.remove.test.", (redisChannel, value) => OnSubscriptionHit(redisChannel, value));
+            subscriber.Subscribe("cacheSleeve.flush.test.", (redisChannel, value) => OnSubscriptionHit(redisChannel, "flush"));
 
             var nullLogger = new Mock<ICacheLogger>().Object;
 
             _remoteCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), nullLogger);
             _localCacher = new HttpContextCacher(nullLogger);
 
-            _hybridCacher = new HybridCacher(_remoteCacher, _localCacher);
+            var configMock = new Mock<IHybridCacherConfig>();
+            configMock.Setup(c => c.KeyPrefix).Returns("test.");
+
+            _hybridCacher = new HybridCacher(configMock.Object, _remoteCacher, _localCacher);
             
         }
 
@@ -51,15 +54,15 @@ namespace CacheSleeve.Tests
             public void SetCachesRemote()
             {
                 _hybridCacher.Set("key", "value");
-                var result = _remoteCacher.Get<string>("key");
+                var result = _remoteCacher.Get<string>(_hybridCacher.AddPrefix("key"));
                 Assert.Equal("value", result);
             }
 
             [Fact]
             public void GetsFromLocalCacheFirst()
             {
-                _remoteCacher.Set("key", "value1");
-                _localCacher.Set("key", "value2");
+                _remoteCacher.Set(_hybridCacher.AddPrefix("key"), "value1");
+                _localCacher.Set(_hybridCacher.AddPrefix("key"), "value2");
                 var result = _hybridCacher.Get<string>("key");
                 Assert.Equal("value2", result);
             }
@@ -67,7 +70,7 @@ namespace CacheSleeve.Tests
             [Fact]
             public void GetsFromRemoteCacheIfNotInLocal()
             {
-                _remoteCacher.Set("key", "value1");
+                _remoteCacher.Set(_hybridCacher.AddPrefix("key"), "value1");
                 var result = _hybridCacher.Get<string>("key");
                 Assert.Equal("value1", result);
             }
@@ -75,26 +78,26 @@ namespace CacheSleeve.Tests
             [Fact]
             public void SetsExpirationOfLocalByRemoteTimeToLive()
             {
-                _remoteCacher.Set("key", "value1", DateTime.Now.AddSeconds(120));
+                _remoteCacher.Set(_hybridCacher.AddPrefix("key"), "value1", DateTime.Now.AddSeconds(120));
                 var hybridResult = _hybridCacher.Get<string>("key");
-                var ttl = _localCacher.TimeToLive("key");
+                var ttl = _localCacher.TimeToLive(_hybridCacher.AddPrefix("key"));
                 Assert.InRange(ttl, 118, 122);
             }
 
             [Fact]
             public void CanGetAllKeys()
             {
-                _remoteCacher.Set("key1", "value");
-                _localCacher.Set("key2", "value");
+                _remoteCacher.Set(_hybridCacher.AddPrefix("key1"), "value");
+                _localCacher.Set(_hybridCacher.AddPrefix("key2"), "value");
                 var result = _hybridCacher.GetAllKeys();
-                Assert.True(result.Select(k => k.KeyName).Contains(_hybridCacher.AddPrefix("key1")));
-                Assert.True(result.Select(k => k.KeyName).Contains(_hybridCacher.AddPrefix("key2")));
+                Assert.True(result.Select(k => k.KeyName).Contains("key1"));
+                Assert.True(result.Select(k => k.KeyName).Contains("key2"));
             }
 
             [Fact]
             public void ExpirationTransfersFromRemoteToLocal()
             {
-                _remoteCacher.Set("key1", "value", DateTime.Now.AddSeconds(120));
+                _remoteCacher.Set(_hybridCacher.AddPrefix("key1"), "value", DateTime.Now.AddSeconds(120));
                 _hybridCacher.Get<string>("key1");
                 var results = _localCacher.GetAllKeys();
                 Assert.InRange(results.First().ExpirationDate.Value, DateTime.Now.AddSeconds(118), DateTime.Now.AddSeconds(122));
@@ -110,7 +113,7 @@ namespace CacheSleeve.Tests
                 SubscriptionHit += (key, message) => { lastMessage = message; };
                 _hybridCacher.Set("key", "value");
                 Thread.Sleep(30);
-                Assert.Equal("key", lastMessage);
+                Assert.Equal(_hybridCacher.AddPrefix("key"), lastMessage);
             }
 
             [Fact]
@@ -120,7 +123,7 @@ namespace CacheSleeve.Tests
                 SubscriptionHit += (key, message) => { lastMessage = message; };
                 _hybridCacher.Remove("key");
                 Thread.Sleep(30);
-                Assert.Equal("key", lastMessage);
+                Assert.Equal(_hybridCacher.AddPrefix("key"), lastMessage);
             }
 
             [Fact]
@@ -143,10 +146,10 @@ namespace CacheSleeve.Tests
                 _hybridCacher.Get<string>("key1");
                 _hybridCacher.Set("key2", "value2", "key1");
                 _hybridCacher.Get<string>("key2");
-                var result = _localCacher.Get<string>("key2");
+                var result = _localCacher.Get<string>(_hybridCacher.AddPrefix("key2"));
                 Assert.Equal("value2", result);
-                _localCacher.Remove("key1");
-                result = _localCacher.Get<string>("key2");
+                _localCacher.Remove(_hybridCacher.AddPrefix("key1"));
+                result = _localCacher.Get<string>(_hybridCacher.AddPrefix("key2"));
                 Assert.Equal(null, result);
             }
         }

@@ -51,9 +51,11 @@
     <Compile Include="CacheTracer.cs" />
     <Compile Include="HttpContextCacher.cs" />
     <Compile Include="HybridCacher.cs" />
+    <Compile Include="HybridCacherConfig.cs" />
     <Compile Include="IAsyncCacher.cs" />
     <Compile Include="ICacheLogger.cs" />
     <Compile Include="ICacher.cs" />
+    <Compile Include="IHybridCacherConfig.cs" />
     <Compile Include="IObjectSerializer.cs" />
     <Compile Include="IRedisConnection.cs" />
     <Compile Include="JsonObjectSerializer.cs" />
