@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Web;
 using CacheSleeve.Tests.TestObjects;
 using Xunit;
+using Moq;
 
 namespace CacheSleeve.Tests
 {
@@ -19,8 +20,10 @@ namespace CacheSleeve.Tests
             HttpContext.Current = new HttpContext(new HttpRequest(null, "http://tempuri.org", null), new HttpResponse(null));
             
             _redisConnection = RedisConnection.Create(TestSettings.RedisHost, TestSettings.RedisPort, TestSettings.RedisPassword, TestSettings.RedisDb);
-            
-            _redisCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), null);
+
+            var nullLogger = new Mock<ICacheLogger>().Object;
+
+            _redisCacher = new RedisCacher(_redisConnection, new JsonObjectSerializer(), nullLogger);
         }
 
         public class Basics : RedisCacherAsyncTests
@@ -116,14 +119,32 @@ namespace CacheSleeve.Tests
 
         public class Failsafes : RedisCacherAsyncTests
         {
+            //[Fact]
+            //public async void RemovesAndReturnsDefaultIfGetItemNotOfValidTypeOfT()
+            //{
+            //    await _redisCacher.SetAsync("key", TestSettings.George);
+            //    var result = await _redisCacher.GetAsync<int>("key");
+            //    Assert.Equal(0, result);
+            //    var result2 = await _redisCacher.GetAsync<Monkey>("key");
+            //    Assert.Equal(null, result2);
+            //}
+
             [Fact]
-            public async void RemovesAndReturnsDefaultIfGetItemNotOfValidTypeOfT()
+            public async void ThrowsExceptionIfGetItemNotOfValidTypeOfT()
             {
                 await _redisCacher.SetAsync("key", TestSettings.George);
-                var result = await _redisCacher.GetAsync<int>("key");
-                Assert.Equal(0, result);
-                var result2 = await _redisCacher.GetAsync<Monkey>("key");
-                Assert.Equal(null, result2);
+
+                Exception ex = null;
+                try
+                {
+                    await _redisCacher.GetAsync<int>("key");
+                }
+                catch (Exception e)
+                {
+                    ex = e;
+                }
+
+                Assert.NotNull(ex);
             }
         }
 
@@ -164,7 +185,7 @@ namespace CacheSleeve.Tests
                 var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
                 var childrenKey = "key1.children";
                 var result = conn.ListRange(childrenKey, 0, -1);
-                Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
+                Assert.Contains("key2", result.Select(x => x.ToString()));
             }
 
             [Fact]
@@ -214,7 +235,7 @@ namespace CacheSleeve.Tests
                 var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
                 var childrenKey = "key1.children";
                 var result = conn.ListRange(childrenKey, 0, -1);
-                Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
+                Assert.Contains("key2", result.Select(x => x.ToString()));
                 await _redisCacher.SetAsync("key1", "value3");
                 result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
                 Assert.Equal(0, result.Length);
@@ -240,7 +261,7 @@ namespace CacheSleeve.Tests
                 var conn = _redisConnection.Connection.GetDatabase(_redisConnection.RedisDb);
                 var childrenKey = "key1.children";
                 var result = conn.ListRange(childrenKey, 0, -1);
-                Assert.Contains(TestSettings.KeyPrefix + "key2", result.Select(x => x.ToString()));
+                Assert.Contains("key2", result.Select(x => x.ToString()));
                 await _redisCacher.RemoveAsync("key1");
                 result = conn.ListRange(childrenKey, 0, (int)conn.ListLength(childrenKey));
                 Assert.Equal(0, result.Length);
