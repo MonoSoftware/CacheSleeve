@@ -197,40 +197,50 @@ namespace CacheSleeve
         public bool Remove(string key)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isRemoved;
             try
             {
-                _remoteCacher.Remove(cacheKey);
-                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-                return true;
+                isRemoved = _remoteCacher.Remove(cacheKey);
             }
             catch (Exception)
             {
                 return false;
             }
+
+            if (isRemoved)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isRemoved;
         }
 
         public async Task<bool> RemoveAsync(string key)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isRemoved;
             try
             {
-                await _remoteCacher.RemoveAsync(cacheKey);
+                isRemoved = await _remoteCacher.RemoveAsync(cacheKey);
             }
             catch (Exception)
             {
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isRemoved)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isRemoved;
         }
 
         public bool Set<T>(string key, T value, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                _remoteCacher.Set(cacheKey, value, this.AddPrefix(parentKey));
+                isSet = _remoteCacher.Set(cacheKey, value, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -239,16 +249,20 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         public bool Set<T>(string key, T value, DateTime expiresAt, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                _remoteCacher.Set(cacheKey, value, expiresAt, this.AddPrefix(parentKey));
+                isSet = _remoteCacher.Set(cacheKey, value, expiresAt, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -257,16 +271,20 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         public bool Set<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                _remoteCacher.Set(cacheKey, value, expiresIn, this.AddPrefix(parentKey));
+                isSet = _remoteCacher.Set(cacheKey, value, expiresIn, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -275,16 +293,20 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         public async Task<bool> SetAsync<T>(string key, T value, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                await _remoteCacher.SetAsync(cacheKey, value, this.AddPrefix(parentKey));
+                isSet = await _remoteCacher.SetAsync(cacheKey, value, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -293,16 +315,20 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         public async Task<bool> SetAsync<T>(string key, T value, DateTime expiresAt, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                await _remoteCacher.SetAsync(cacheKey, value, expiresAt, this.AddPrefix(parentKey));
+                isSet = await _remoteCacher.SetAsync(cacheKey, value, expiresAt, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -311,16 +337,20 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         public async Task<bool> SetAsync<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
         {
             var cacheKey = this.AddPrefix(key);
+            bool isSet;
             try
             {
-                await _remoteCacher.SetAsync(cacheKey, value, expiresIn, this.AddPrefix(parentKey));
+                isSet = await _remoteCacher.SetAsync(cacheKey, value, expiresIn, this.AddPrefix(parentKey));
             }
             catch (Exception)
             {
@@ -329,8 +359,11 @@ namespace CacheSleeve
                 return false;
             }
 
-            _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
-            return true;
+            if (isSet)
+            {
+                _remoteCacher.PublishToChannel(this._removeChannel, cacheKey);
+            }
+            return isSet;
         }
 
         #endregion Methods
