@@ -41,7 +41,10 @@ namespace CacheSleeve
             foreach (var endpoint in _redisConnection.GetEndPoints())
             {
                 var server = _redisConnection.GetServer(endpoint);
-                server.FlushDatabase(this._redisDb);
+                if (!server.IsSlave)
+                {
+                    server.FlushDatabase(this._redisDb);
+                }
             }
         }
 
@@ -51,7 +54,10 @@ namespace CacheSleeve
             foreach (var endpoint in _redisConnection.GetEndPoints())
             {
                 var server = _redisConnection.GetServer(endpoint);
-                tasks.Add(server.FlushDatabaseAsync(this._redisDb));
+                if (!server.IsSlave)
+                {
+                    tasks.Add(server.FlushDatabaseAsync(this._redisDb));
+                }
             }
 
             await Task.WhenAll(tasks);
