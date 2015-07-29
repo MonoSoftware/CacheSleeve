@@ -112,8 +112,6 @@ namespace CacheSleeve
                     _localCacher.Set(cacheKey, result, TimeSpan.FromSeconds(ttl), parentKey);
                 else
                     _localCacher.Set(cacheKey, result, parentKey);
-
-                result = _localCacher.Get<T>(cacheKey);
             }
             return result;
         }
@@ -158,8 +156,6 @@ namespace CacheSleeve
                     _localCacher.Set(cacheKey, result, TimeSpan.FromSeconds(ttl), parentKey);
                 else
                     _localCacher.Set(cacheKey, result, parentKey);
-
-                result = _localCacher.Get<T>(cacheKey);
             }
             return result;
         }

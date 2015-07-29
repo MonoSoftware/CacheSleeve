@@ -1,17 +1,22 @@
-﻿using System;
+﻿using CacheSleeve.Models;
+using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Web.Caching;
-using CacheSleeve.Models;
 
 namespace CacheSleeve
 {
     public class HttpContextCacher : ICacher
     {
+        #region Fields
+
         private readonly Cache _cache;
         private readonly ICacheLogger _logger;
+
+        #endregion Fields
+
+        #region Constructors
 
         public HttpContextCacher(
             ICacheLogger logger
@@ -20,7 +25,18 @@ namespace CacheSleeve
             _logger = logger;
             _cache = System.Web.HttpContext.Current.Cache;
         }
-        
+
+        #endregion Constructors
+
+        #region Methods
+
+        public void FlushAll()
+        {
+            var enumerator = _cache.GetEnumerator();
+            while (enumerator.MoveNext())
+                _cache.Remove(enumerator.Key.ToString());
+        }
+
         public T Get<T>(string key)
         {
             var cacheEntry = (CacheEntry)_cache.Get(key);
@@ -35,23 +51,14 @@ namespace CacheSleeve
             }
         }
 
-        public bool Set<T>(string key, T value, string parentKey = null)
+        public IEnumerable<Key> GetAllKeys()
         {
-            var entry = new CacheEntry(value, null);
-            return InternalSet(key, entry, parentKey);
+            var keys = _cache.Cast<DictionaryEntry>()
+                .Where(de => de.Value.GetType() == typeof(CacheEntry))
+                .Select(de => new Key((string)de.Key, ((CacheEntry)de.Value).ExpiresAt));
+            return keys;
         }
 
-        public bool Set<T>(string key, T value, DateTime expiresAt, string parentKey = null)
-        {
-            var entry = new CacheEntry(value, expiresAt);
-            return InternalSet(key, entry, parentKey);
-        }
-
-        public bool Set<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
-        {
-            return this.Set(key, value, DateTime.Now.Add(expiresIn), parentKey);
-        }
-        
         public bool Remove(string key)
         {
             if (_cache.Get(key) == null)
@@ -72,23 +79,24 @@ namespace CacheSleeve
             }
         }
 
-        public void FlushAll()
+        public bool Set<T>(string key, T value, string parentKey = null)
         {
-            var enumerator = _cache.GetEnumerator();
-            while (enumerator.MoveNext())
-                _cache.Remove(enumerator.Key.ToString());
+            var entry = new CacheEntry(value, null);
+            return InternalSet(key, entry, parentKey);
         }
 
-        public IEnumerable<Key> GetAllKeys()
+        public bool Set<T>(string key, T value, DateTime expiresAt, string parentKey = null)
         {
-            var keys = _cache.Cast<DictionaryEntry>()
-                .Where(de => de.Value.GetType() == typeof(CacheEntry))
-                .Select(de => new Key((string)de.Key, ((CacheEntry)de.Value).ExpiresAt));
-            return keys;
+            var entry = new CacheEntry(value, expiresAt);
+            return InternalSet(key, entry, parentKey);
+        }
+
+        public bool Set<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
+        {
+            return this.Set(key, value, DateTime.Now.Add(expiresIn), parentKey);
         }
 
         /// <summary>
-        /// 
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
@@ -114,15 +122,15 @@ namespace CacheSleeve
             try
             {
                 if (entry.ExpiresAt == null)
-                    _cache.Insert(key, entry, cacheDependency);
+                    _cache.Insert(key, entry, cacheDependency, Cache.NoAbsoluteExpiration, Cache.NoSlidingExpiration, CacheItemPriority.NotRemovable, null);
                 else
-                    _cache.Insert(key, entry, cacheDependency, entry.ExpiresAt.Value, Cache.NoSlidingExpiration);
+                    _cache.Insert(key, entry, cacheDependency, entry.ExpiresAt.Value, Cache.NoSlidingExpiration, CacheItemPriority.NotRemovable, null);
 
                 if (_logger.DebugEnabled)
                 {
                     _logger.Debug(String.Format("CS HttpContext: Set cache item with key {0}", key));
                 }
-                
+
                 return true;
             }
             catch (Exception)
@@ -131,11 +139,17 @@ namespace CacheSleeve
             }
         }
 
+        #endregion Methods
+
+        #region Classes
+
         /// <summary>
         /// Private class for the wrapper around the cache items.
         /// </summary>
         private class CacheEntry
         {
+            #region Constructors
+
             /// <summary>
             /// Creates a new instance of CacheEntry.
             /// </summary>
@@ -147,6 +161,10 @@ namespace CacheSleeve
                 ExpiresAt = expiresAt;
             }
 
+            #endregion Constructors
+
+            #region Properties
+
             /// <summary>
             /// UTC time at which CacheEntry expires.
             /// </summary>
@@ -156,6 +174,10 @@ namespace CacheSleeve
             /// The value that is cached.
             /// </summary>
             internal object Value { get; private set; }
+
+            #endregion Properties
         }
+
+        #endregion Classes
     }
 }

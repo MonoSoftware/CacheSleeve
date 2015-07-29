@@ -235,7 +235,7 @@ namespace CacheSleeve
 
         public bool Set<T>(string key, T value, string parentKey = null)
         {
-            var result = this.InternalSet(key, value);
+            var result = this.InternalSet(key, value, null);
             if (result)
             {
                 RemoveDependencies(key);
@@ -251,11 +251,9 @@ namespace CacheSleeve
 
         public bool Set<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
         {
-            var result = InternalSet(key, value);
+            var result = InternalSet(key, value, expiresIn);
             if (result)
             {
-                var conn = _redisConnection.GetDatabase(this._redisDb);
-                result = conn.KeyExpire(key, expiresIn);
                 RemoveDependencies(key);
                 SetDependencies(key, parentKey);
             }
@@ -264,7 +262,7 @@ namespace CacheSleeve
 
         public async Task<bool> SetAsync<T>(string key, T value, string parentKey = null)
         {
-            var result = await this.InternalSetAsync(key, value);
+            var result = await this.InternalSetAsync(key, value, null);
             if (result)
             {
                 await RemoveDependenciesAsync(key);
@@ -281,11 +279,9 @@ namespace CacheSleeve
 
         public async Task<bool> SetAsync<T>(string key, T value, TimeSpan expiresIn, string parentKey = null)
         {
-            var result = await InternalSetAsync(key, value);
+            var result = await InternalSetAsync(key, value, expiresIn);
             if (result)
             {
-                var conn = _redisConnection.GetDatabase(this._redisDb);
-                result = await conn.KeyExpireAsync(key, expiresIn);
                 await RemoveDependenciesAsync(key);
                 await SetDependenciesAsync(key, parentKey);
             }
@@ -338,23 +334,23 @@ namespace CacheSleeve
         /// <param name="key">The key of the item to insert.</param>
         /// <param name="value">The value of the item to insert.</param>
         /// <returns></returns>
-        private bool InternalSet<T>(string key, T value)
+        private bool InternalSet<T>(string key, T value, TimeSpan? expiry)
         {
             var conn = _redisConnection.GetDatabase(this._redisDb);
             try
             {
                 if (typeof(T) == typeof(byte[]))
                 {
-                    conn.StringSet(key, value as byte[]);
+                    conn.StringSet(key, value as byte[], expiry);
                 }
                 else if (typeof(T) == typeof(string))
                 {
-                    conn.StringSet(key, value as string);
+                    conn.StringSet(key, value as string, expiry);
                 }
                 else
                 {
                     var serializedValue = _objectSerializer.SerializeObject<T>(value);
-                    conn.StringSet(key, serializedValue);
+                    conn.StringSet(key, serializedValue, expiry);
                 }
 
                 if (_logger.DebugEnabled)
@@ -376,23 +372,23 @@ namespace CacheSleeve
         /// <param name="key">The key of the item to insert.</param>
         /// <param name="value">The value of the item to insert.</param>
         /// <returns></returns>
-        private async Task<bool> InternalSetAsync<T>(string key, T value)
+        private async Task<bool> InternalSetAsync<T>(string key, T value, TimeSpan? expiry)
         {
             var conn = _redisConnection.GetDatabase(this._redisDb);
             try
             {
                 if (typeof(T) == typeof(byte[]))
                 {
-                    await conn.StringSetAsync(key, value as byte[]);
+                    await conn.StringSetAsync(key, value as byte[], expiry);
                 }
                 else if (typeof(T) == typeof(string))
                 {
-                    await conn.StringSetAsync(key, value as string);
+                    await conn.StringSetAsync(key, value as string, expiry);
                 }
                 else
                 {
                     var serializedValue = _objectSerializer.SerializeObject<T>(value);
-                    await conn.StringSetAsync(key, serializedValue);
+                    await conn.StringSetAsync(key, serializedValue, expiry);
                 }
 
                 if (_logger.DebugEnabled)
@@ -475,13 +471,12 @@ namespace CacheSleeve
             var childDepKey = childKey + ".parent";
 
             conn.ListRightPush(parentDepKey, childKey);
-            conn.StringSet(childDepKey, parentKey);
             var ttl = conn.KeyTimeToLive(parentKey);
+            conn.StringSet(childDepKey, parentKey, ttl);
             if (ttl != null && ttl.Value.TotalSeconds > -1)
             {
                 var children = conn.ListRange(parentDepKey, 0, -1).ToList();
                 conn.KeyExpire(parentDepKey, ttl);
-                conn.KeyExpire(childDepKey, ttl);
                 foreach (var child in children)
                     conn.KeyExpire(child.ToString(), ttl);
             }
@@ -501,17 +496,19 @@ namespace CacheSleeve
             var conn = _redisConnection.GetDatabase(this._redisDb);
             var parentDepKey = parentKey + ".children";
             var childDepKey = childKey + ".parent";
+
             var parentKetPushTask = conn.ListRightPushAsync(parentDepKey, childKey);
-            var childKeySetTask = conn.StringSetAsync(childDepKey, parentKey);
             var ttlTask = conn.KeyTimeToLiveAsync(parentKey);
-            await Task.WhenAll(parentKetPushTask, childKeySetTask, ttlTask);
+            await Task.WhenAll(parentKetPushTask, ttlTask);
             var ttl = ttlTask.Result;
+
+            await conn.StringSetAsync(childDepKey, parentKey, ttl);
+            var childKeySetTask = conn.StringSetAsync(childDepKey, parentKey);
             if (ttl != null && ttl.Value.TotalSeconds > -1)
             {
                 var children = (await conn.ListRangeAsync(parentDepKey, 0, -1)).ToList();
-                var expirationTasks = new List<Task>(children.Count + 2);
+                var expirationTasks = new List<Task>(children.Count + 1);
                 expirationTasks.Add(conn.KeyExpireAsync(parentDepKey, ttl));
-                expirationTasks.Add(conn.KeyExpireAsync(childDepKey, ttl));
 
                 foreach (var child in children)
                     expirationTasks.Add(conn.KeyExpireAsync(child.ToString(), ttl));
