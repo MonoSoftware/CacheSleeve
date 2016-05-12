@@ -23,7 +23,7 @@ namespace CacheSleeve
             )
         {
             _logger = logger;
-            _cache = System.Web.HttpContext.Current.Cache;
+            _cache = System.Web.HttpRuntime.Cache;
         }
 
         #endregion Constructors
